@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Онлайн Ресторан</title>
+    <!-- Подключаем Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #8b7355; --bg: #fcfaf8; --text: #2c2420; }
+        body { font-family: 'Roboto', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 100px; }
+        
+        #welcome-screen {
+            position: fixed; top:0; left:0; width:100%; height:100vh; z-index: 2000;
+            background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1544148103-0773bf10d330?q=80&w=1000');
+            background-size: cover; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; color: white; transition: opacity 0.8s;
+        }
+        #main-content { display: none; }
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 15px; }
+        .item-card { background: white; padding: 15px; border-radius: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #cart-sticky { position: fixed; bottom: 20px; left: 5%; width: 90%; z-index: 900; }
+        .btn-main { width: 100%; padding: 18px; background: var(--primary); color: white; border: none; border-radius: 15px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 3000; justify-content: center; align-items: center; opacity: 0; transition: 0.3s; }
+        .modal-content { background: white; padding: 25px; border-radius: 20px; width: 85%; max-width: 400px; transform: scale(0.9); transition: 0.3s; }
+        .input-f { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+<div id="welcome-screen">
+    <h1 style="font-family: 'Playfair Display', serif; font-size: 2em; padding: 0 20px;">ДОБРО ПОЖАЛОВАТЬ В ОНЛАЙН ТЕСТОВЫЙ РЕСТОРАН!</h1>
+    <button class="btn-main" style="width: auto; padding: 15px 40px; font-size: 18px;" onclick="startApp()">ВЫБРАТЬ БЛЮДА 🍽️</button>
+</div>
+
+<div id="main-content">
+    <div style="padding: 20px; text-align: center;"><h2 style="font-family: 'Playfair Display', serif;">Наше Меню</h2></div>
+    <div class="menu-grid" id="menu-container"></div>
+</div>
+
+<div id="cart-sticky">
+    <button id="checkout-btn" class="btn-main" style="display:none;" onclick="openModal('modal')">ПЕРЕЙТИ К ОФОРМЛЕНИЮ ➡️</button>
+</div>
+
+<div id="modal" class="modal">
+    <div class="modal-content">
+        <h3>Оформление заказа 📝</h3>
+        <input type="text" id="name" class="input-f" placeholder="Ваше Имя">
+        <div style="display:flex; align-items:center; border:1px solid #ddd; border-radius:10px; padding:0 10px;">
+            <span style="color:#666;">+998</span>
+            <input type="number" id="phone" class="input-f" style="border:none; margin:0;" placeholder="991234567">
+        </div>
+        <p id="err" style="color:red; font-size:12px; display:none; margin:5px 0;">⚠️ Введите ровно 9 цифр номера! ❌</p>
+        <input type="text" id="address" class="input-f" placeholder="Ваш Адрес">
+        <button class="btn-main" onclick="submit()">ОФОРМИТЬ ЗАКАЗ</button>
+        <button onclick="closeModal('modal')" style="background:none; border:none; width:100%; margin-top:10px; color:#666; cursor:pointer;">Назад</button>
+    </div>
+</div>
+
+<div id="success-modal" class="modal">
+    <div class="modal-content" style="text-align:center;">
+        <div style="font-size: 50px;">✅</div>
+        <h2 style="font-family: 'Playfair Display', serif;">ВАШ ЗАКАЗ ОФОРМЛЕН!</h2>
+        <p>ОТПРАВИМ ЕГО В БЛИЖАЙШЕЕ ВРЕМЯ!</p>
+        <button class="btn-main" onclick="location.reload()">ХОРОШО</button>
+    </div>
+</div>
+
+<script>
+    // Инициализация Telegram WebApp
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    tg.ready();
+
+    const menu = [
+        {id: 1, title: "Плов", emoji: "🍛"}, {id: 2, title: "Самса", emoji: "🥐"},
+        {id: 3, title: "Манты", emoji: "🥟"}, {id: 4, title: "Шашлык", emoji: "🍢"},
+        {id: 5, title: "Кукси", emoji: "🍜"}, {id: 6, title: "Лагман", emoji: "🍝"}
+    ];
+    let cart = {};
+
+    function startApp() { 
+        document.getElementById('welcome-screen').style.opacity = '0'; 
+        setTimeout(() => { document.getElementById('welcome-screen').style.display = 'none'; document.getElementById('main-content').style.display = 'block'; }, 800); 
+    }
+
+    const container = document.getElementById('menu-container');
+    menu.forEach(item => {
+        container.innerHTML += `
+            <div class="item-card">
+                <div style="font-size:40px">${item.emoji}</div>
+                <div style="font-weight:bold; margin: 5px 0;">${item.title}</div>
+                <div style="display:flex; justify-content:center; gap:10px; align-items:center;">
+                    <button onclick="updateCart('${item.id}', -1)">-</button>
+                    <span id="val-${item.id}">0</span>
+                    <button onclick="updateCart('${item.id}', 1)">+</button>
+                </div>
+            </div>`;
+    });
+
+    function updateCart(id, val) {
+        cart[id] = Math.max(0, (cart[id] || 0) + val);
+        document.getElementById(`val-${id}`).innerText = cart[id];
+        const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
+        document.getElementById('checkout-btn').style.display = totalItems > 0 ? 'block' : 'none';
+    }
+
+    function openModal(id) { 
+        const el = document.getElementById(id);
+        el.style.display = 'flex'; 
+        setTimeout(() => { el.style.opacity = '1'; el.querySelector('.modal-content').style.transform = 'scale(1)'; }, 10);
+    }
+
+    function closeModal(id) { 
+        const el = document.getElementById(id);
+        el.style.opacity = '0'; el.querySelector('.modal-content').style.transform = 'scale(0.9)';
+        setTimeout(() => el.style.display = 'none', 300);
+    }
+
+    function submit() {
+        const phone = document.getElementById('phone').value;
+        const name = document.getElementById('name').value;
+        const address = document.getElementById('address').value;
+
+        if(phone.length !== 9) { document.getElementById('err').style.display = 'block'; }
+        else { 
+            // Формируем текст для Telegram бота
+            let orderText = `📦 НОВЫЙ ЗАКАЗ\n👤 Имя: ${name}\n📞 Тел: +998${phone}\n📍 Адрес: ${address}\n\n`;
+            for(let id in cart) {
+                if(cart[id] > 0) {
+                    let item = menu.find(m => m.id == id);
+                    orderText += `${item.title}: ${cart[id]} шт.\n`;
+                }
+            }
+            
+            // Отправляем в Telegram
+            tg.sendData(orderText);
+            
+            closeModal('modal'); 
+            openModal('success-modal');
+        }
+    }
+</script>
+</body>
+</html>
